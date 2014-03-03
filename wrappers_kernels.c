@@ -10,7 +10,7 @@
 #include <stdio.h>
 
 #define PI 3.14159265
-#define CORES 2
+int WRAP_CORES = 2;
 
 /*
  * WRAPPERS AND KERNELS
@@ -88,6 +88,10 @@ void *wrap_expression_1_thread(void *param);
 void *wrap_rhs_thread(void *param);
 void *wrap_lhs_thread(void *param);
 
+void wrap_init(const int cores) {
+  WRAP_CORES = cores;
+}
+
 void expression_kernel_1(double A[6] , double** x_ )
 {
   double x[3];
@@ -111,13 +115,13 @@ void wrap_expression_1(int start, int end,
 
   fprintf(stderr, "wrap_expression_1 %d * %d iterations\n", end - start + 1, layer);
 
-  pthread_t threads[CORES];
-  wrap_expression_struct args[CORES];
+  pthread_t threads[WRAP_CORES];
+  wrap_expression_struct args[WRAP_CORES];
 
-  int iter_step = (end - start + 1) / CORES;
-  for (int i = 0; i < CORES; ++i) {
+  int iter_step = (end - start + 1) / WRAP_CORES;
+  for (int i = 0; i < WRAP_CORES; ++i) {
     int _start = start + (iter_step * i);
-    int _end = (i == CORES - 1 ? end : _start + iter_step - 1);
+    int _end = (i == WRAP_CORES - 1 ? end : _start + iter_step - 1);
 
     // Create a structre to pass all arguments
     args[i].start = _start;
@@ -133,7 +137,7 @@ void wrap_expression_1(int start, int end,
     pthread_create(&threads[i], NULL, wrap_expression_1_thread, (void*) &args[i]);
   }
 
-  for (int i = 0; i < CORES; ++i)
+  for (int i = 0; i < WRAP_CORES; ++i)
     pthread_join(threads[i], NULL);
 }
 
@@ -395,13 +399,13 @@ void wrap_rhs(int start, int end,
   double *arg3_0, int *arg3_0_map0_0,
   int *_arg0_0_off0_0, int *_arg1_0_off0_0, int *_arg2_0_off0_0, int *_arg3_0_off0_0 , int layer) {
  
-  pthread_t threads[CORES];
-  wrap_rhs_struct args[CORES];
+  pthread_t threads[WRAP_CORES];
+  wrap_rhs_struct args[WRAP_CORES];
 
-  int iter_step = (end - start + 1) / CORES;
-  for (int i = 0; i < CORES; ++i) {
+  int iter_step = (end - start + 1) / WRAP_CORES;
+  for (int i = 0; i < WRAP_CORES; ++i) {
     int _start = start + (iter_step * i);
-    int _end = (i == CORES - 1 ? end : _start + iter_step - 1);
+    int _end = (i == WRAP_CORES - 1 ? end : _start + iter_step - 1);
 
     // Create a structre to pass all arguments
     args[i].start = _start;
@@ -423,7 +427,7 @@ void wrap_rhs(int start, int end,
     pthread_create(&threads[i], NULL, wrap_rhs_thread, (void*) &args[i]);
   }
 
-  for (int i = 0; i < CORES; ++i)
+  for (int i = 0; i < WRAP_CORES; ++i)
     pthread_join(threads[i], NULL);
 
   fprintf (stderr, "wrap_rhs %d * %d iterations\n", end - start + 1, layer);
@@ -583,13 +587,13 @@ void wrap_lhs(int start, int end,
   double *arg1_0, int *arg1_0_map0_0,
   int *_arg0_0_off0_0, int *_arg0_0_off1_0, int *_arg1_0_off0_0, int layer) {
 
-  pthread_t threads[CORES];
-  wrap_lhs_struct args[CORES];
+  pthread_t threads[WRAP_CORES];
+  wrap_lhs_struct args[WRAP_CORES];
 
-  int iter_step = (end - start + 1) / CORES;
-  for (int i = 0; i < CORES; ++i) {
+  int iter_step = (end - start + 1) / WRAP_CORES;
+  for (int i = 0; i < WRAP_CORES; ++i) {
     int _start = start + (iter_step * i);
-    int _end = (i == CORES - 1 ? end : _start + iter_step - 1);
+    int _end = (i == WRAP_CORES - 1 ? end : _start + iter_step - 1);
 
     // Create a structre to pass all arguments
     args[i].start = _start;
@@ -607,7 +611,7 @@ void wrap_lhs(int start, int end,
     pthread_create(&threads[i], NULL, wrap_lhs_thread, (void*) &args[i]);
   }
 
-  for (int i = 0; i < CORES; ++i)
+  for (int i = 0; i < WRAP_CORES; ++i)
     pthread_join(threads[i], NULL);
 
   fprintf (stderr, "wrap_lhs %d * %d iterations\n", end - start + 1, layer); 

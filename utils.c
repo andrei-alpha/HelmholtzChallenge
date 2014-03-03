@@ -6,8 +6,21 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pthread.h>
 
 #define RANGE 1000.0
+int UTILS_CORES = 2;
+
+// Thread for output
+void *output_thread (void *);
+// Structure to pass to the output thread
+typedef struct output_struct {int start; int end;
+  double *v; char *buffer; int *ind;
+} output_struct;
+
+void utils_init(const int cores) {
+  UTILS_CORES = cores;
+}
 
 /*
  * Some utility functions.
@@ -60,12 +73,50 @@ void check_zero(double *v, int n, int dim){
   printf("PASS\n");
 }
 
-void output(char * filename, double* v, int n, int dim){
+void* output_thread(void *param) {
+  output_struct *args = (output_struct *) param;
+  *(args->ind) = 0;
+
+  char temp[34];
+  for (int i = args->start; i < args->end; ++i) {
+    memset(temp, 0, sizeof(temp));
+    sprintf (temp, "%13.12f\n", args->v[i]);
+    for (int i = 0; temp[i] != '\0'; ++i) {
+      args->buffer[*args->ind] = temp[i];
+      *(args->ind) = *args->ind + 1;
+    } 
+  }
+}
+
+void output(char * filename, double* v, int n, int dim, int cores){
   FILE *f = fopen(filename, "wr");
   fprintf(f, "%d %d\n", n, dim);
-  for(int i = 0; i < n; i++){
-    fprintf(f,"%13.12f\n",v[i]);
+  
+  pthread_t threads[UTILS_CORES];
+  output_struct args[UTILS_CORES];
+  char *buffers[UTILS_CORES];
+
+  int iter_step = n / UTILS_CORES;
+  for (int i = 0; i < UTILS_CORES; ++i) {
+    int _start = (iter_step * i);
+    int _end = (i == UTILS_CORES - 1 ? n : _start + iter_step);
+    buffers[i] = (char *) malloc ((_end - _start + 1) * 34);
+
+    args[i].start = _start;
+    args[i].end = _end;
+    args[i].v = v;
+    args[i].buffer = buffers[i];
+    args[i].ind = (int *) malloc (1);
+
+    pthread_create(&threads[i], NULL, output_thread, (void*) &args[i]);
   }
+
+  for (int i = 0; i < UTILS_CORES; ++i) {
+    pthread_join(threads[i], NULL);
+    fwrite(buffers[i], sizeof(char), *args[i].ind, f);
+    free (buffers[i]);
+  }
+
   fclose(f);
 }
 

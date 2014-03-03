@@ -32,4 +32,4 @@ extern void wrap_lhs(int start, int end,
                      double *arg1_0, int *arg1_0_map0_0,
                      int *_arg0_0_off0_0, int *_arg0_0_off1_0, int *_arg1_0_off0_0, int layer);
 
-void *wrap_expression_1_thread(void *param);
+extern void wrap_init (const int cores);

@@ -31,3 +31,5 @@ extern int * extrude_map(int * map, int cells, int cell_size, int layers);
 extern double * create_constant_field(int size, int dim, double val);
 
 extern int * create_cell_map(int cells, int dim, int layers);
+
+extern void utils_init (const int cores);

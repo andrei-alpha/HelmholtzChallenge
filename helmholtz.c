@@ -15,6 +15,7 @@
 #include "utils.h"
 
 #define LAYERS 101
+#define CORES 2
 #define LAYER_HEIGHT 0.1
 #define FILE_LHS "lhs_out"
 #define FILE_RHS "rhs_out"
@@ -33,6 +34,7 @@ int main (int argc, char *argv[])
     printf("The filename must be of the form: /Path/To/Meshes/Folder/meshname_without_extension\n");
     exit(0);
   }
+  utils_init(CORES);
 
   /* 
    * Read in 2D mesh informations, coordinates of the vertices and the
@@ -62,7 +64,7 @@ int main (int argc, char *argv[])
    *
    * Assembly of the LHS and RHS of a Helmholtz Equation.
    */
-
+  wrap_init(CORES);
   /* 
    * Evaluate an expression over the mesh.
    *
@@ -148,9 +150,13 @@ int main (int argc, char *argv[])
   /*
    * RHS and LHS output
    */
+
+  write: s1 = stamp();
+  printf(" Numerical results written to output files... ");
   output(FILE_RHS, expr4, nodes * LAYERS, 1);
   output(FILE_LHS, expr5, nodes * LAYERS, 1);
-  printf(" Numerical results written to output files.\n");
+  s2 = stamp();
+  printf("%g s\n", (s2 - s1)/1e9);
 
   free(coords_3D);
   free(map_3D);
