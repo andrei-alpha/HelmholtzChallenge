@@ -5,8 +5,12 @@
  */
 
 #include <math.h>
+#include <pthread.h>
+// Just for experiments
+#include <stdio.h>
 
 #define PI 3.14159265
+#define CORES 2
 
 /*
  * WRAPPERS AND KERNELS
@@ -49,16 +53,43 @@ double FE0_D010[8][6] = {{-0.788675134594813, -0.211324865405187, 0.0, 0.0, 0.78
 {-0.211324865405187, -0.788675134594813, 0.0, 0.0, 0.211324865405187, 0.788675134594813},
 {-0.788675134594813, -0.211324865405187, 0.0, 0.0, 0.788675134594813, 0.211324865405187},
 {-0.211324865405187, -0.788675134594813, 0.0, 0.0, 0.211324865405187, 0.788675134594813}};
+//constants for expression_kernel
 
+const double XX[6][6] = {{1.0,0.0,2.77555756156e-17,0.0,0.0,0.0},
+{0.0,1.0,0.0,2.77555756156e-17,0.0,0.0},
+{-2.77555756156e-17,-0,1.0,0.0,0.0,0.0},
+{-0,-2.77555756156e-17,0.0,1.0,0.0,0.0},
+{0.0,0.0,5.55111512313e-17,0.0,1.0,0.0},
+{0.0,0.0,0.0,5.55111512313e-17,0.0,1.0}};
+
+// Structure to pass parameters for evaluate expression
+typedef struct wrap_expression_struct {int start; int end;
+  double * arg0_0; int *arg0_0_map0_0; double *arg1_0; int *arg1_0_map0_0;
+  int *_arg0_0_off0_0; int *_arg1_0_off0_0; int layer;
+} wrap_expression_struct;
+
+// Structure to pass parameters for assembly rhs
+typedef struct wrap_rhs_struct {int start; int end;
+  double *arg0_0; int *arg0_0_map0_0;
+  double *arg1_0; int *arg1_0_map0_0;
+  double *arg2_0; int *arg2_0_map0_0;
+  double *arg3_0; int *arg3_0_map0_0;
+  int *_arg0_0_off0_0; int *_arg1_0_off0_0; 
+  int *_arg2_0_off0_0; int *_arg3_0_off0_0; int layer;
+} wrap_rhs_struct;
+
+//Structure to pass parameters for assebmly lhs
+typedef struct wrap_lhs_struct {int start; int end;
+  double * arg0_0; int *arg0_0_map0_0; int *arg0_0_map1_0; double *arg1_0; int *arg1_0_map0_0;
+  int *_arg0_0_off0_0; int *_arg0_0_off1_0; int *_arg1_0_off0_0; int layer;
+} wrap_lhs_struct;
+
+void *wrap_expression_1_thread(void *param);
+void *wrap_rhs_thread(void *param);
+void *wrap_lhs_thread(void *param);
 
 void expression_kernel_1(double A[6] , double** x_ )
 {
-  const double X[6][6] = {{1.0,0.0,2.77555756156e-17,0.0,0.0,0.0},
-  {0.0,1.0,0.0,2.77555756156e-17,0.0,0.0},
-  {-2.77555756156e-17,-0,1.0,0.0,0.0,0.0},
-  {-0,-2.77555756156e-17,0.0,1.0,0.0,0.0},
-  {0.0,0.0,5.55111512313e-17,0.0,1.0,0.0},
-  {0.0,0.0,0.0,5.55111512313e-17,0.0,1.0}};
   double x[3];
   const double pi = 3.141592653589793;
   {
@@ -67,7 +98,7 @@ void expression_kernel_1(double A[6] , double** x_ )
       for (unsigned int d=0; d < 3; d++) {
         x[d] = 0;
         for (unsigned int i=0; i < 6; i++) {
-          x[d] += X[k][i] * x_[i][d];
+          x[d] += XX[k][i] * x_[i][d];
         };
       };
       A[k] = (1+12*PI*PI)*cos(x[0]*PI*2)*cos(x[1]*PI*2)*cos(x[2]*PI*2);
@@ -75,10 +106,52 @@ void expression_kernel_1(double A[6] , double** x_ )
   }
 }
 void wrap_expression_1(int start, int end,
-  double * arg0_0, int *arg0_0_map0_0, double *arg1_0, int *arg1_0_map0_0,
-  int *_arg0_0_off0_0, int *_arg1_0_off0_0 , int layer) {
+    double *arg0_0, int *arg0_0_map0_0, double *arg1_0, int *arg1_0_map0_0,
+    int *_arg0_0_off0_0, int *_arg1_0_off0_0 , int layer) {
+
+  fprintf(stderr, "wrap_expression_1 %d * %d iterations\n", end - start + 1, layer);
+
+  pthread_t threads[CORES];
+  wrap_expression_struct args[CORES];
+
+  int iter_step = (end - start + 1) / CORES;
+  for (int i = 0; i < CORES; ++i) {
+    int _start = start + (iter_step * i);
+    int _end = (i == CORES - 1 ? end : _start + iter_step - 1);
+
+    // Create a structre to pass all arguments
+    args[i].start = _start;
+    args[i].end = _end;
+    args[i].arg0_0 = arg0_0;
+    args[i].arg0_0_map0_0 = arg0_0_map0_0;
+    args[i].arg1_0 = arg1_0;
+    args[i].arg1_0_map0_0 = arg1_0_map0_0;
+    args[i]._arg0_0_off0_0 = _arg0_0_off0_0;
+    args[i]._arg1_0_off0_0 = _arg1_0_off0_0;
+    args[i].layer = layer;
+
+    pthread_create(&threads[i], NULL, wrap_expression_1_thread, (void*) &args[i]);
+  }
+
+  for (int i = 0; i < CORES; ++i)
+    pthread_join(threads[i], NULL);
+}
+
+void *wrap_expression_1_thread(void *param) {
   double *arg1_0_vec[6];
   int xtr_arg0_0_map0_0[6];
+
+  wrap_expression_struct *args = (wrap_expression_struct *) param;
+  int start = args->start;
+  int end = args->end;
+  double *arg0_0 = args->arg0_0;
+  int *arg0_0_map0_0 = args->arg0_0_map0_0;
+  double *arg1_0 = args->arg1_0;
+  int *arg1_0_map0_0 = args->arg1_0_map0_0;
+  int *_arg0_0_off0_0 = args->_arg0_0_off0_0;
+  int *_arg1_0_off0_0 = args->_arg1_0_off0_0;
+  int layer = args->layer;
+
   for ( int n = start; n < end; n++ ) {
     int i = n;
     arg1_0_vec[0] = arg1_0 + (arg1_0_map0_0[i * 6 + 0])* 3;
@@ -114,7 +187,6 @@ void wrap_expression_1(int start, int end,
     }
   }
 }
-
 
 // ZERO KERNEL
 void zero_1(double *dat) {
@@ -162,6 +234,9 @@ void wrap_rhs_1(int start, int end,
   double *arg1_0_vec[18];
   double *arg2_0_vec[6];
   int xtr_arg0_0_map0_0[6];
+
+  fprintf (stderr, "wrap_rhs_1 %d * %d iterations\n", end - start + 1, layer);
+
   for ( int n = start; n < end; n++ ) {
     int i = n;
     arg1_0_vec[0] = arg1_0 + (arg1_0_map0_0[i * 6 + 0])* 3;
@@ -314,15 +389,69 @@ void kernel_rhs(double A[6] , double **vertex_coordinates , double **w0 , double
 }
 
 void wrap_rhs(int start, int end,
-              double *arg0_0, int *arg0_0_map0_0,
-              double *arg1_0, int *arg1_0_map0_0,
-              double *arg2_0, int *arg2_0_map0_0,
-              double *arg3_0, int *arg3_0_map0_0,
-              int *_arg0_0_off0_0, int *_arg1_0_off0_0, int *_arg2_0_off0_0, int *_arg3_0_off0_0 , int layer) {
+  double *arg0_0, int *arg0_0_map0_0,
+  double *arg1_0, int *arg1_0_map0_0,
+  double *arg2_0, int *arg2_0_map0_0,
+  double *arg3_0, int *arg3_0_map0_0,
+  int *_arg0_0_off0_0, int *_arg1_0_off0_0, int *_arg2_0_off0_0, int *_arg3_0_off0_0 , int layer) {
+ 
+  pthread_t threads[CORES];
+  wrap_rhs_struct args[CORES];
+
+  int iter_step = (end - start + 1) / CORES;
+  for (int i = 0; i < CORES; ++i) {
+    int _start = start + (iter_step * i);
+    int _end = (i == CORES - 1 ? end : _start + iter_step - 1);
+
+    // Create a structre to pass all arguments
+    args[i].start = _start;
+    args[i].end = _end;
+    args[i].arg0_0 = arg0_0;
+    args[i].arg0_0_map0_0 = arg0_0_map0_0;
+    args[i].arg1_0 = arg1_0;
+    args[i].arg1_0_map0_0 = arg1_0_map0_0;
+    args[i].arg2_0 = arg2_0;
+    args[i].arg2_0_map0_0 = arg2_0_map0_0;
+    args[i].arg3_0 = arg3_0;
+    args[i].arg3_0_map0_0 = arg3_0_map0_0;
+    args[i]._arg0_0_off0_0 = _arg0_0_off0_0;
+    args[i]._arg1_0_off0_0 = _arg1_0_off0_0;
+    args[i]._arg2_0_off0_0 = _arg2_0_off0_0;
+    args[i]._arg3_0_off0_0 = _arg3_0_off0_0;
+    args[i].layer = layer;
+
+    pthread_create(&threads[i], NULL, wrap_rhs_thread, (void*) &args[i]);
+  }
+
+  for (int i = 0; i < CORES; ++i)
+    pthread_join(threads[i], NULL);
+
+  fprintf (stderr, "wrap_rhs %d * %d iterations\n", end - start + 1, layer);
+}
+
+void *wrap_rhs_thread (void *param) {
   double *arg1_0_vec[18];
   double *arg2_0_vec[6];
   double *arg3_0_vec[6];
   int xtr_arg0_0_map0_0[6];
+
+  wrap_rhs_struct *args = (wrap_rhs_struct *) param;
+  int start = args->start;
+  int end = args->end;
+  double *arg0_0 = args->arg0_0;
+  int *arg0_0_map0_0 = args->arg0_0_map0_0;
+  double *arg1_0 = args->arg1_0;
+  int *arg1_0_map0_0 = args->arg1_0_map0_0;
+  double *arg2_0 = args->arg2_0;
+  int *arg2_0_map0_0 = args->arg2_0_map0_0;
+  double *arg3_0 = args->arg3_0;
+  int *arg3_0_map0_0 = args->arg3_0_map0_0;
+  int *_arg0_0_off0_0 = args->_arg0_0_off0_0;
+  int *_arg1_0_off0_0 = args->_arg1_0_off0_0;
+  int *_arg2_0_off0_0 = args->_arg2_0_off0_0;
+  int *_arg3_0_off0_0 = args->_arg3_0_off0_0;
+  int layer = args->layer;
+
   for ( int n = start; n < end; n++ ) {
     int i = n;
     arg1_0_vec[0] = arg1_0 + (arg1_0_map0_0[i * 6 + 0])* 3;
@@ -407,7 +536,6 @@ void wrap_rhs(int start, int end,
   }
 }
 
-
 // MATRIX ASSEMBLY KERNEL
 // WARNING: Do not modify this function
 static void addto_vector(double *arg0_0,
@@ -451,12 +579,58 @@ static void kernel_lhs(double A[6][6] , double **vertex_coordinates )
   }
 }
 void wrap_lhs(int start, int end,
-              double *arg0_0, int *arg0_0_map0_0, int *arg0_0_map1_0,
-              double *arg1_0, int *arg1_0_map0_0,
-              int *_arg0_0_off0_0, int *_arg0_0_off1_0, int *_arg1_0_off0_0, int layer) {
+  double *arg0_0, int *arg0_0_map0_0, int *arg0_0_map1_0,
+  double *arg1_0, int *arg1_0_map0_0,
+  int *_arg0_0_off0_0, int *_arg0_0_off1_0, int *_arg1_0_off0_0, int layer) {
+
+  pthread_t threads[CORES];
+  wrap_lhs_struct args[CORES];
+
+  int iter_step = (end - start + 1) / CORES;
+  for (int i = 0; i < CORES; ++i) {
+    int _start = start + (iter_step * i);
+    int _end = (i == CORES - 1 ? end : _start + iter_step - 1);
+
+    // Create a structre to pass all arguments
+    args[i].start = _start;
+    args[i].end = _end;
+    args[i].arg0_0 = arg0_0;
+    args[i].arg0_0_map0_0 = arg0_0_map0_0;
+    args[i].arg0_0_map1_0 = arg0_0_map1_0;
+    args[i].arg1_0 = arg1_0;
+    args[i].arg1_0_map0_0 = arg1_0_map0_0;
+    args[i]._arg0_0_off0_0 = _arg0_0_off0_0;
+    args[i]._arg0_0_off1_0 = _arg0_0_off1_0;
+    args[i]._arg1_0_off0_0 = _arg1_0_off0_0;
+    args[i].layer = layer;
+
+    pthread_create(&threads[i], NULL, wrap_lhs_thread, (void*) &args[i]);
+  }
+
+  for (int i = 0; i < CORES; ++i)
+    pthread_join(threads[i], NULL);
+
+  fprintf (stderr, "wrap_lhs %d * %d iterations\n", end - start + 1, layer); 
+}
+
+void *wrap_lhs_thread (void *param) {
   double *arg1_0_vec[18];
   int xtr_arg0_0_map0_0[6];
   int xtr_arg0_0_map1_0[6];
+
+  wrap_lhs_struct *args = (wrap_lhs_struct *) param;
+  int start = args->start;
+  int end = args->end;
+  double *arg0_0 = args->arg0_0;
+  int *arg0_0_map0_0 = args->arg0_0_map0_0;
+  int *arg0_0_map1_0 = args->arg0_0_map1_0;
+  double *arg1_0 = args->arg1_0;
+  int *arg1_0_map0_0 = args->arg1_0_map0_0;
+  int *_arg0_0_off0_0 = args->_arg0_0_off0_0;
+  int *_arg0_0_off1_0 = args->_arg0_0_off1_0;
+  int *_arg1_0_off0_0 = args->_arg1_0_off0_0;
+  int layer = args->layer;
+
   for ( int n = start; n < end; n++ ) {
     int i = n;
     arg1_0_vec[0] = arg1_0 + (arg1_0_map0_0[i * 6 + 0])* 3;

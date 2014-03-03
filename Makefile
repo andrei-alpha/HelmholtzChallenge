@@ -1,6 +1,6 @@
 CPP = gcc
 SRC = helmholtz.c gettimemicroseconds.c utils.c wrappers_kernels.c
-FLAGS = -O3 -std=c99
+FLAGS = -pthread -O3 -std=c99
 LIBS = -lrt -lm
 
 all: compare_dat helmholtz
